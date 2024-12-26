@@ -118,7 +118,7 @@ def server_main(port = None):
                 print(f"[+] Receiving file: '{file_name}' ({size_string(file_size)})")
                 local_cursor = 0
                 probe_cursor = 0
-                speed_probes = ([None] * speed_probe_size)
+                speed_probes = ([0] * speed_probe_size)
 
                 if (not os.path.abspath(file_name).startswith(os.path.abspath(""))):
                     print("[!] Client provided an invalid path.")
