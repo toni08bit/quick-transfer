@@ -125,6 +125,7 @@ def server_main(port = None):
                     tls_connection.close()
                     continue
 
+                last_transfer = None
                 with open(file_name,"wb") as file_handle:
                     while (local_cursor < file_size):
                         buffer = tls_connection.recv(min((file_size - local_cursor),buffer_size))
