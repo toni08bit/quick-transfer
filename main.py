@@ -8,7 +8,7 @@ import subprocess
 import random
 
 buffer_size = (8 * 1024)
-speed_probe_size = 64
+speed_probe_size = 2000
 progress_bar_width = 45
 progress_interval = 0.2
 
@@ -40,25 +40,30 @@ def client_main(host,port,code,file_path):
 
             local_cursor = 0
             probe_cursor = 0
-            transfer_probes = ([None] * speed_probe_size)
+            speed_probes = ([0] * speed_probe_size)
 
+            last_transfer = None
             with open(file_path,"rb") as input_file:
                 while True:
                     buffer = input_file.read(4096)
+                    buffer_len = len(buffer)
                     if (not buffer):
                         break
 
                     tls_socket.sendall(buffer)
                     transmit_time = time.perf_counter()
-                    local_cursor += len(buffer)
+                    local_cursor += buffer_len
 
-                    transfer_probes[probe_cursor] = [transmit_time,local_cursor]
-                    probe_cursor += 1
-                    if (probe_cursor >= speed_probe_size):
-                        probe_cursor = 0
+                    if (last_transfer):
+                        current_speed = (buffer_len / (transmit_time - last_transfer))
+                        speed_probes[probe_cursor] = current_speed
+                        probe_cursor += 1
+                        if (probe_cursor >= speed_probe_size):
+                            probe_cursor = 0
+                    last_transfer = transmit_time
 
                     print_progress(
-                        speed = probes_to_speed(transfer_probes),
+                        speed = avg_probes(speed_probes),
                         transmitted = local_cursor,
                         total = file_size
                     )
@@ -113,7 +118,7 @@ def server_main(port = None):
                 print(f"[+] Receiving file: '{file_name}' ({size_string(file_size)})")
                 local_cursor = 0
                 probe_cursor = 0
-                transfer_probes = ([None] * speed_probe_size)
+                speed_probes = ([None] * speed_probe_size)
 
                 if (not os.path.abspath(file_name).startswith(os.path.abspath(""))):
                     print("[!] Client provided an invalid path.")
@@ -123,20 +128,24 @@ def server_main(port = None):
                 with open(file_name,"wb") as file_handle:
                     while (local_cursor < file_size):
                         buffer = tls_connection.recv(min((file_size - local_cursor),buffer_size))
+                        buffer_len = len(buffer)
                         if (not buffer):
                             print("[!] Connection was interrupted.")
                             break
                         file_handle.write(buffer)
                         transmit_time = time.perf_counter()
-                        local_cursor += len(buffer)
+                        local_cursor += buffer_len
                         
-                        transfer_probes[probe_cursor] = [transmit_time,local_cursor]
-                        probe_cursor += 1
-                        if (probe_cursor >= speed_probe_size):
-                            probe_cursor = 0
+                        if (last_transfer):
+                            current_speed = (buffer_len / (transmit_time - last_transfer))
+                            speed_probes[probe_cursor] = current_speed
+                            probe_cursor += 1
+                            if (probe_cursor >= speed_probe_size):
+                                probe_cursor = 0
+                        last_transfer = transmit_time
 
                         print_progress(
-                            speed = probes_to_speed(transfer_probes),
+                            speed = avg_probes(speed_probes),
                             transmitted = local_cursor,
                             total = file_size
                         )
@@ -168,21 +177,21 @@ def time_string(seconds):
 def random_digits(digits):
     return "".join(str(random.randint(0,9)) for _ in range(digits))
 
-def probes_to_speed(probe_list):
-    if (len(probe_list) <= 1):
+def avg_probes(probe_list):
+    total_sum = 0
+    probe_counter = 0
+
+    for probe in probe_list:
+        if (probe == 0):
+            continue
+
+        total_sum += probe
+        probe_counter += 1
+
+    if (probe_counter == 0):
         return 0
-
-    probe_list = [probe for probe in probe_list if probe is not None]
-    sorted_probes = sorted(probe_list, key=lambda x: x[0])
-
-    total_time = (sorted_probes[-1][0] - sorted_probes[0][0])
-    total_bytes = (sorted_probes[-1][1] - sorted_probes[0][1])
-
-    if (total_time == 0):
-        return 0
-
-    speed = (total_bytes / total_time)
-    return speed
+    
+    return (total_sum / probe_counter)
 
 last_progress_time = None
 last_progress_length = 0
