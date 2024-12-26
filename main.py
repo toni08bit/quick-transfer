@@ -8,8 +8,9 @@ import subprocess
 import random
 
 buffer_size = (8 * 1024)
-speed_probe_size = 1000
+speed_probe_size = 64
 progress_bar_width = 45
+progress_interval = 0.2
 
 # Main Functions
 def client_main(host,port,code,file_path):
@@ -183,9 +184,16 @@ def probes_to_speed(probe_list):
     speed = (total_bytes / total_time)
     return speed
 
+last_progress_time = None
 last_progress_length = 0
 def print_progress(speed,transmitted,total):
     global last_progress_length
+    global last_progress_time
+
+    progress_time = time.perf_counter()
+    if (last_progress_time and ((progress_time - last_progress_time) < progress_interval)):
+        return
+    last_progress_time = progress_time
 
     progress = (transmitted / total)
     if (speed != 0):
