@@ -8,7 +8,7 @@ import subprocess
 import random
 
 buffer_size = (8 * 1024)
-speed_probe_size = 2000
+speed_probe_size = 200
 progress_bar_width = 45
 progress_interval = 0.2
 
