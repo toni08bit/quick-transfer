@@ -8,7 +8,7 @@ import subprocess
 import random
 
 buffer_size = (8 * 1024)
-speed_probe_size = 64
+speed_probe_size = 1000
 progress_bar_width = 45
 
 # Main Functions
@@ -193,7 +193,7 @@ def print_progress(speed,transmitted,total):
     else:
         seconds_left = 0
     bar_fill = (progress * progress_bar_width)
-    progress_text = f"\r    [{'#' * int(bar_fill)}{'-' * (progress_bar_width - int(bar_fill))}] {(progress * 100):6.2f}% {size_string(speed):>7}/s {time_string(seconds_left)}"
+    progress_text = f"\r    [{'#' * int(bar_fill)}{'-' * (progress_bar_width - int(bar_fill))}] {(progress * 100):6.2f}% {size_string(speed):>10}/s {time_string(seconds_left)}"
     next_progress_length = len(progress_text)
     progress_text = (progress_text + (" " * (last_progress_length - next_progress_length)))
     last_progress_length = next_progress_length
