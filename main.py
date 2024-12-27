@@ -241,7 +241,7 @@ def main():
         parser.add_argument("-p","--port",help = "Port to listen on (random if not specified).",type = int)
 
         args = parser.parse_args()
-        server_main()
+        server_main(args.port)
     else:
         parser = argparse.ArgumentParser(description = "Simple TLS-secured file-transmitting tool.")
         parser.add_argument("host",help = "Server hostname or IP.")
