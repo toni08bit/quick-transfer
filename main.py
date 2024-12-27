@@ -10,7 +10,7 @@ import random
 buffer_size = (8 * 1024)
 speed_probe_size = 2000
 progress_bar_width = 45
-progress_interval = 0.2
+speed_interval = 0.2
 
 # Main Functions
 def client_main(host,port,code,file_path):
@@ -39,31 +39,18 @@ def client_main(host,port,code,file_path):
                 return
 
             local_cursor = 0
-            probe_cursor = 0
-            speed_probes = ([0] * speed_probe_size)
 
-            last_transfer = None
             with open(file_path,"rb") as input_file:
                 while True:
-                    buffer = input_file.read(4096)
-                    buffer_len = len(buffer)
+                    buffer = input_file.read(buffer_size)
                     if (not buffer):
                         break
 
-                    tls_socket.sendall(buffer)
-                    transmit_time = time.perf_counter()
-                    local_cursor += buffer_len
+                    local_cursor += len(buffer)
 
-                    if (last_transfer):
-                        current_speed = (buffer_len / (transmit_time - last_transfer))
-                        speed_probes[probe_cursor] = current_speed
-                        probe_cursor += 1
-                        if (probe_cursor >= speed_probe_size):
-                            probe_cursor = 0
-                    last_transfer = transmit_time
+                    tls_socket.sendall(buffer)
 
                     print_progress(
-                        probes = speed_probes,
                         transmitted = local_cursor,
                         total = file_size
                     )
@@ -99,63 +86,69 @@ def server_main(port = None):
             keyfile = keyfile
         )
 
-        while True:
-            print("[*] Waiting for connection...")
-            connection,address = raw_socket.accept()
-            with tls_context.wrap_socket(connection,server_side = True) as tls_connection:
-                recv_code = tls_connection.recv(3)
-                if (not recv_code):
-                    print("[!] No code received, closing connection.")
-                    tls_connection.close()
-                    continue
-                print("[+] Client authenticated successfully.")
+        try:
+            while True:
+                print("[*] Waiting for connection...")
+                try:
+                    connection,address = raw_socket.accept()
+                except KeyboardInterrupt:
+                    break
+                try:
+                    with tls_context.wrap_socket(connection,server_side = True) as tls_connection:
+                        recv_code = tls_connection.recv(3)
+                        if (not recv_code):
+                            print("[!] No code received, closing connection.")
+                            tls_connection.close()
+                            continue
+                        print("[+] Client authenticated successfully.")
 
-                file_name_length = int.from_bytes(tls_connection.recv(1),"big")
-                file_name = tls_connection.recv(file_name_length).decode("utf-8")
-                file_size = int.from_bytes(tls_connection.recv(8),"big")
+                        file_name_length = int.from_bytes(tls_connection.recv(1),"big")
+                        file_name = tls_connection.recv(file_name_length).decode("utf-8")
+                        file_size = int.from_bytes(tls_connection.recv(8),"big")
 
-                tls_connection.sendall(0x01.to_bytes(1,"big"))
-                print(f"[+] Receiving file: '{file_name}' ({size_string(file_size)})")
-                local_cursor = 0
-                probe_cursor = 0
-                speed_probes = ([0] * speed_probe_size)
 
-                if (not os.path.abspath(file_name).startswith(os.path.abspath(""))):
-                    print("[!] Client provided an invalid path.")
-                    tls_connection.close()
-                    continue
+                        if (not os.path.abspath(file_name).startswith(os.path.abspath(""))):
+                            print("[!] Client provided an invalid path.")
+                            tls_connection.sendall(0x00.to_bytes(1,"big"))
+                            tls_connection.close()
+                            continue
 
-                last_transfer = None
-                with open(file_name,"wb") as file_handle:
-                    while (local_cursor < file_size):
-                        buffer = tls_connection.recv(min((file_size - local_cursor),buffer_size))
-                        buffer_len = len(buffer)
-                        if (not buffer):
-                            print("[!] Connection was interrupted.")
-                            break
-                        file_handle.write(buffer)
-                        transmit_time = time.perf_counter()
-                        local_cursor += buffer_len
-                        
-                        if (last_transfer):
-                            current_speed = (buffer_len / (transmit_time - last_transfer))
-                            speed_probes[probe_cursor] = current_speed
-                            probe_cursor += 1
-                            if (probe_cursor >= speed_probe_size):
-                                probe_cursor = 0
-                        last_transfer = transmit_time
+                        if (os.path.exists(file_name)):
+                            print("[!] Client provided an existing path.")
+                            tls_connection.sendall(0x00.to_bytes(1,"big"))
+                            tls_connection.close()
+                            continue
 
-                        print_progress(
-                            probes = speed_probes,
-                            transmitted = local_cursor,
-                            total = file_size
-                        )
+                        tls_connection.sendall(0x01.to_bytes(1,"big"))
+                        print(f"[+] Receiving file: '{file_name}' ({size_string(file_size)})")
+                        local_cursor = 0
 
-                tls_connection.sendall(0x01.to_bytes(1,"big"))
-                print("\n[+] File transfer complete, confimed.")
-                tls_connection.close()
-                print("[+] Closed connection.")
-                continue
+                        with open(file_name,"wb") as file_handle:
+                            while (local_cursor < file_size):
+                                buffer = tls_connection.recv(min((file_size - local_cursor),buffer_size))
+                                if (not buffer):
+                                    print("\n[!] Connection was interrupted.")
+                                    break
+                                file_handle.write(buffer)
+                                local_cursor += len(buffer)
+
+                                print_progress(
+                                    transmitted = local_cursor,
+                                    total = file_size
+                                )
+
+                        tls_connection.sendall(0x01.to_bytes(1,"big"))
+                        print("\n[+] File transfer complete, confimed.")
+                        tls_connection.close()
+                        print("[+] Closed connection.")
+                        continue
+                except ssl.SSLEOFError:
+                    print("\n[+] Connection closed by client.")
+                except Exception as exception:
+                    print(f"\n[!] Closed connection due to {exception.__class__.__name__}")
+        finally:
+            os.remove(keyfile)
+            os.remove(certfile)
 
 # Utility
 def size_string(num_bytes):
@@ -194,25 +187,31 @@ def avg_probes(probe_list):
     
     return (total_sum / probe_counter)
 
-last_progress_time = None
+transmit_point = [None,None]
+transmit_speed = None
 last_progress_length = 0
-def print_progress(probes,transmitted,total):
+def print_progress(transmitted,total):
+    global transmit_speed
+    global transmit_point
     global last_progress_length
-    global last_progress_time
 
     progress_time = time.perf_counter()
-    if (last_progress_time and ((progress_time - last_progress_time) < progress_interval)):
-        return
-    last_progress_time = progress_time
+    if ((not transmit_point[0]) or ((progress_time - transmit_point[0]) > speed_interval)):
+        next_transmit_point = [progress_time,transmitted]
+        if (transmit_point[0]):
+            transmit_speed = ((next_transmit_point[1] - transmit_point[1]) / (next_transmit_point[0] - transmit_point[0]))
+        else:
+            transmit_speed = 0
+        
+        transmit_point = next_transmit_point
 
     progress = (transmitted / total)
-    speed = avg_probes(probes)
-    if (speed != 0):
-        seconds_left = ((total - transmitted) / speed)
+    if (transmit_speed != 0):
+        seconds_left = ((total - transmitted) / transmit_speed)
     else:
         seconds_left = 0
     bar_fill = (progress * progress_bar_width)
-    progress_text = f"\r    [{'#' * int(bar_fill)}{'-' * (progress_bar_width - int(bar_fill))}] {(progress * 100):6.2f}% {size_string(speed):>10}/s {time_string(seconds_left)}"
+    progress_text = f"\r    [{'#' * int(bar_fill)}{'-' * (progress_bar_width - int(bar_fill))}] {(progress * 100):6.2f}% {size_string(transmit_speed):>10}/s {time_string(seconds_left)}"
     next_progress_length = len(progress_text)
     progress_text = (progress_text + (" " * (last_progress_length - next_progress_length)))
     last_progress_length = next_progress_length
