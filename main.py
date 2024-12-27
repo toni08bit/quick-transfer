@@ -146,7 +146,7 @@ def server_main(port = None):
                         last_transfer = transmit_time
 
                         print_progress(
-                            probes = avg_probes(speed_probes),
+                            probes = speed_probes,
                             transmitted = local_cursor,
                             total = file_size
                         )
