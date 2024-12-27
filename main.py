@@ -8,7 +8,7 @@ import subprocess
 import random
 
 buffer_size = (8 * 1024)
-speed_probe_size = 200
+speed_probe_size = 2000
 progress_bar_width = 45
 progress_interval = 0.2
 
@@ -63,7 +63,7 @@ def client_main(host,port,code,file_path):
                     last_transfer = transmit_time
 
                     print_progress(
-                        speed = avg_probes(speed_probes),
+                        probes = speed_probes,
                         transmitted = local_cursor,
                         total = file_size
                     )
@@ -146,7 +146,7 @@ def server_main(port = None):
                         last_transfer = transmit_time
 
                         print_progress(
-                            speed = avg_probes(speed_probes),
+                            probes = avg_probes(speed_probes),
                             transmitted = local_cursor,
                             total = file_size
                         )
@@ -196,7 +196,7 @@ def avg_probes(probe_list):
 
 last_progress_time = None
 last_progress_length = 0
-def print_progress(speed,transmitted,total):
+def print_progress(probes,transmitted,total):
     global last_progress_length
     global last_progress_time
 
@@ -206,6 +206,7 @@ def print_progress(speed,transmitted,total):
     last_progress_time = progress_time
 
     progress = (transmitted / total)
+    speed = avg_probes(probes)
     if (speed != 0):
         seconds_left = ((total - transmitted) / speed)
     else:
